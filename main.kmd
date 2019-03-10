@@ -1,0 +1,1240 @@
+KMD
+00000000:             ; ;##############################################################################
+00000000:             ; ; EXERCISE 7 - KEYBOARDS
+00000000:             ; ; COMP22712
+00000000:             ; ;
+00000000:             ; ; Richard-Johnson Farukh
+00000000:             ; ; StudentID: 9706660
+00000000:             ; ;
+00000000:             ; ; DATE: 18.03.2017
+00000000:             ; ;
+00000000:             ; ;------------------------------------------------------------------------------
+00000000:             ; ; READ ME
+00000000:             ; ;
+00000000:             ; ; Compile and run this file !
+00000000:             ; ; The user is redirected to the user code section in the beginning - B start
+00000000:             ; ;
+00000000:             ; ; In this program, a keyboard is polled every 10 milliseconds from an interrupt
+00000000:             ; ; which is caused by the timer incrementing
+00000000:             ; ;
+00000000:             ; ; The program offers a clock and an alarm facility, the clock being on the top
+00000000:             ; ; row of the LCD and the alarm being displayed on the bottom
+00000000:             ; ; The colon on the clock blinks every second to notify the user that it is ticking
+00000000:             ; ; and the clock can be seen while setting the alarm and vice versa
+00000000:             ; ;
+00000000:             ; ; The screen refreshes every 10 ms to record the pressing of * or #
+00000000:             ; ; When pressing *, the user can set the time, and when pressing #, they can set
+00000000:             ; ; the alarm to the correct time, both of which are located in memory.
+00000000:             ; ;
+00000000:             ; ; Pressing the lower button resets the seconds and milliseconds to 0 (for synchronizing)
+00000000:             ; ;
+00000000:             ; ; REGISTERS
+00000000:             ; ; R4 is used in the printChar function, but only during check button SVC call
+00000000:             ; ; R5 is a global register, which holds the last printed character (for debouncing)
+00000000:             ; ;
+00000000:             ; ; FUNCTIONS
+00000000:             ; ; SVC 0 - End program
+00000000:             ; ; SVC 1 - check if the button on keyboard is pressed
+00000000:             ; ; SVC 2 - check if the lower button on the board is pressed - clear seconds
+00000000:             ; ; SVC 3 - check if the upper button on the board is pressed - toggle alarm on and off
+00000000:             ; ;
+00000000:             ; ; EXTRA BUTTONS
+00000000:             ; ; Lower button - clears seconds
+00000000:             ; ; Upper button - toggle alarm
+00000000:             ; ;
+00000000:             ; ;------------------------------------------------------------------------------
+00000000: EA000005    ;         B       initialize
+00000004: EA0000A2    ;         B       end
+00000008: EA000017    ;         B       svc_start
+0000000C: EA0000A0    ;         B       end
+00000010: EA00009F    ;         B       end
+00000014: EA00009E    ;         B       end
+00000018: EA00001C    ;         B       interrupt
+0000001C:             ; 
+0000001C:             ; ;------------------------------------------------------------------------------
+0000001C:             ; initialize
+0000001C: E3A07000    ;         MOV     R7,     #0                      ; R8 stores timer for clock
+00000020: E28FDE9E    ;         ADRL    SP,     s_stack                 ; Allocating SVC stack
+00000024: E28DD000    ; 
+00000028: E3A00001    ;         MOV     R0,     #1                      ; Timer interrupts are at bit 0
+0000002C: E3A03201    ;         MOV     R3,     #PORT_A
+00000030: E5C3001C    ;         STRB    R0,     [R3,    #&1C]           ; Allow timer interrupts
+00000034: E3A0000F    ;         MOV     R0,     #&0F                    ; Define the control for the keyboard; Used to 
+                      ; be 1F
+00000038: E28F10C2    ;         ADRL    R1,     NUM_PAD
+0000003C: E2811CFF    ; 
+00000040: E28118FF    ; 
+00000044: E281141F    ; 
+00000048: E5C10001    ;         STRB    R0,     [R1,    #1]             ; Set keyboard controll
+0000004C:             ; 
+0000004C: EB000091    ;         BL      clear                           ; Start with cleared screen
+00000050:             ; 
+00000050: E321F052    ;         MSR     CPSR_c, #&52                    ; Switch to IRQ mode
+00000054: E28FDF9D    ;         ADRL    SP,     _stack_irq              ; Initialize IRQ stack
+00000058: E28DDB02    ; 
+0000005C:             ; 
+0000005C: E321F050    ;         MSR     CPSR_c, #&50                    ; Switch to user mode with interrupt enabled
+00000060: E28FDF81    ;         ADRL    SP,     _stack                  ; Initialize user stack
+00000064: E28DDB02    ; 
+00000068: EA00001B    ;         B       start                           ; Jump to the start of the code
+0000006C:             ; 
+0000006C:             ; ;------------------------------------------------------------------------------
+0000006C:             ; svc_start
+0000006C: E92D0C00    ;         PUSH    {R10, R11}                      ; Start of SVC call
+00000070: E51EB004    ;         LDR     R11,    [LR,#-4]                ; Getting correct SVC instruction
+00000074: E3CBB4FF    ;         BIC     R11,    R11,    #&FF000000
+00000078:             ; 
+00000078: E35B0008    ;         CMP     R11,    #8                      ; If value out of range
+0000007C: CA000001    ;         BGT     return_from_svc                 ; retun from svc
+00000080:             ; 
+00000080: E28FA030    ;         ADR     R10,    SVC_Jump_Table          ; Load jump table address
+00000084: E08AF10B    ;         ADD     PC,     R10,    R11,    LSL #2  ; Offset with theset in memory. svc parameter a
+                      ; nd  Go to jump table address
+00000088:             ; 
+00000088:             ; return_from_svc
+00000088: E8BD0C00    ;         POP     {R10, R11}
+0000008C: E1B0F00E    ;         MOVS    PC,     LR                      ; Go back to previous mode
+00000090:             ; 
+00000090:             ; ;------------------------------------------------------------------------------
+00000090:             ; interrupt
+00000090: EF000005    ;         SVC     5                               ; Check the button on keyboard
+00000094: EF000006    ;         SVC     6                               ; Check lower button on board to clear
+00000098: EF000007    ;         SVC     7                               ; Check upper button on board for next line
+0000009C: EF000008    ;         SVC     8                               ; Go to check/set the time
+000000A0: E5D3100C    ;         LDRB    R1,     [R3, #&C]               ; Get current value in comparison address
+000000A4: E281100A    ;         ADD     R1,     R1,     #10             ; Increment value in comparison, to have an int
+                      ; errupt after 10ms
+000000A8:             ;                                                 ; As it is a byte register, on overflow goes to
+                      ;  0
+000000A8: E5C3100C    ;         STRB    R1,     [R3, #&C]               ; Store value in comparison mem location
+000000AC: E3A02000    ;         MOV     R2,     #0                      ; Value to Acknowledge interrupt
+000000B0: E5C32018    ;         STRB    R2,     [R3, #&18]              ; Acknowledge interrupt (R3 is 10000000)
+000000B4: E25EF004    ;         SUBS    PC,     LR,     #4              ; Go back to previous mode
+000000B8:             ; 
+000000B8:             ; ;------------------------------------------------------------------------------
+000000B8:             ; SVC_Jump_Table
+000000B8: EA000075    ;         B       end                             ; SVC 0
+000000BC: EA0000D6    ;         B       wait_start                      ; SVC 1
+000000C0: EA0000F1    ;         B       timer                           ; SVC 2
+000000C4: EA0000BC    ;         B       add_one                         ; SVC 3
+000000C8: EA00011B    ;         B       dedicatedPrint                  ; SVC 4
+000000CC: EA000003    ;         B       check_button                    ; SVC 5
+000000D0: EA000038    ;         B       reset_seconds                   ; SVC 6
+000000D4: EA000047    ;         B       toggle_alarm                    ; SVC 7
+000000D8: EA000123    ;         B       increment_millis                ; SVC 8
+000000DC:             ; 
+000000DC:             ; ;##############################################################################
+000000DC:             ; ;##############################################################################
+000000DC:             ; ; USER CODE
+000000DC:             ; 
+000000DC:             ; 
+000000DC:             ; 
+000000DC:             ; 
+000000DC:             ; start
+000000DC: EAFFFFFE    ;         B start
+000000E0:             ; ; END OF USER CODE
+000000E0:             ; ;##############################################################################
+000000E0:             ; ;##############################################################################
+000000E0:             ; include keyboard_funct.s
+000000E0:             ; ;###############################################################################
+000000E0:             ; ; Functions associated with the NUM_PAD (keyboard)
+000000E0:             ; ;-------------------------------------------------------------------------------
+000000E0:             ; check_button
+000000E0: E92D401F    ;         PUSH    {R0-R4,LR}                      ; Don't push R5, remember from last interrupt
+000000E4: E3A02000    ;         MOV     R2,     #0                      ; R2 is the row multiplier (CurrentRow)
+000000E8:             ; check_next_row
+000000E8: E28F1012    ;         ADRL    R1,     NUM_PAD                 ; R1 holds the keyboard address
+000000EC: E2811CFF    ; 
+000000F0: E28118FF    ; 
+000000F4: E281141F    ; 
+000000F8: E5510000    ;         LDRB    R0,     [R1]                    ; Get keyboard data
+000000FC:             ; 
+000000FC: E200001F    ;         AND     R0,     R0,     #&1F            ; Make sure I change only top 3 bits
+00000100:             ; 
+00000100: E28F3038    ;         ADRL    R3,     ROWS                    ; Use R3 for other purposes, so dont get addres
+00000104: E2833B02    ; s
+00000108: E7D33002    ;         LDRB    R3,     [R3,R2]                 ; Get different row address for 3 iterations
+0000010C:             ; 
+0000010C: E1800003    ;         ORR     R0,     R0,     R3              ; Set bit 7 high to check Row 3
+00000110: E5410000    ;         STRB    R0,     [R1]                    ; Store bit 7 high
+00000114: E5514000    ;         LDRB    R4,     [R1]                    ; Get current stuff from data
+00000118: E214400F    ;         ANDS    R4,     R4,     #&0F            ; Get first 4 bits (data) - Signal
+0000011C: 0A00001F    ;         BEQ     nothing_pressed
+00000120:             ; 
+00000120: EB000051    ;         BL      check_range                     ; Check if only 1 button is pressed
+00000124: E3540000    ;         CMP     R4, #0                          ; If 2 or more are pressed, check_range returns
+                      ;  0
+00000128: 0B00001C    ;         BLEQ    nothing_pressed                 ; Output nothing when 2 buttons are pressed
+0000012C:             ; 
+0000012C:             ; 
+0000012C: E3A00000    ;         MOV     R0,     #0                      ; Current power
+00000130:             ; compare
+00000130: E3540001    ;         CMP     R4,     #1                      ; Since R4 has been validated, it is a power of
+                      ;  2
+00000134: 0A000002    ;         BEQ     return_index
+00000138: E1A040A4    ;         LSR     R4,     R4,     #1              ; Shift it right until we reach 1
+0000013C: E2800001    ;         ADD     R0,     R0,     #1              ; Increment the power
+00000140: EAFFFFFA    ;         B       compare
+00000144:             ; 
+00000144:             ; 
+00000144:             ; return_index
+00000144: E3A03004    ;         MOV     R3,     #4                      ; To get the offset correctly - 4 Bytes per row
+00000148: E0200293    ;         MLA     R0,     R3,     R2,     R0      ; Digit address: UMS + 4 * CurrentRow + BitNumb
+                      ; er
+0000014C:             ; 
+0000014C: E28F3E7E    ;         ADRL    R3,     NUMS
+00000150: E2833000    ; 
+00000154: E7D34000    ;         LDRB    R4,     [R3, R0]                ; Load R4 from number grid
+00000158:             ; 
+00000158: E1550004    ;         CMP     R5,     R4                      ; R5 starts at 0, which R4 can never be at this
+                      ;  point
+0000015C: 0A000013    ;         BEQ     button_has_been_pressed         ; If old and new are the same, then it must be 
+                      ; held down
+00000160: 11A05004    ;         MOVNE   R5,     R4
+00000164:             ; 
+00000164: E28F3FFB    ;         ADRL    R3,     CMD
+00000168: E2833B01    ; 
+0000016C: E5530000    ;         LDRB    R0,     [R3]                    ; We are interested if R5 is * or # if CMD[0] =
+                      ; = 0
+00000170: E3500000    ;         CMP     R0,     #&0
+00000174: 1A000003    ;         BNE     try_to_get_digit                ; If CMD[0] != 0, we are in a mode for changing
+                      ;  time
+00000178: E3550030    ;         CMP     R5,     #ZERO                   ; IF R5 < 30, it is 0, * or #, we put it in CMD
+                      ; [0]
+0000017C: B1A00005    ;         MOVLT   R0,     R5                      ; If R5 > 30, R0 will already be 0 from 2 instr
+                      ; uctions above
+00000180: E5430000    ;         STRB    R0,     [R3]                    ; and we will eventually store R0 in CMD[0]
+00000184: EA000009    ;         B       button_has_been_pressed         ; Acknowledge that a button has been pressed
+00000188:             ; 
+00000188:             ; try_to_get_digit
+00000188: E3550030    ;         CMP     R5,     #ZERO                   ; Here, we know that we are in command mode, so
+                      ;  want a digit 0-9
+0000018C: E3A00000    ;         MOV     R0,     #&0
+00000190: A1A00005    ;         MOVGE   R0,     R5                      ; If R5 is a digit for the clock, save it in R0
+00000194: E5C30001    ;         STRB    R0,     [R3, #1]                ; If R5 is *,# or 0, we will store original R0 
+                      ; (0) in CMD[0]
+00000198:             ; 
+00000198: E1A05004    ;         MOV     R5,     R4                      ; R5 becomes the last printed digit
+0000019C: EA000003    ;         B       button_has_been_pressed         ; Acknowledge that a button has been pressed
+000001A0:             ; 
+000001A0:             ; 
+000001A0:             ; nothing_pressed                                 ; Branch here if during iteration to button is 
+                      ; pressed
+000001A0: E2822001    ;         ADD     R2,     R2,     #1              ; Increment to read next row
+000001A4: E3520003    ;         CMP     R2,     #3                      ; 3 Keyboard rows in total
+000001A8: BAFFFFCE    ;         BLT     check_next_row
+000001AC:             ; 
+000001AC: E3A05000    ;         MOV     R5, #0                          ; Will only reset R5 when during this interrupt
+                      ;  no button
+000001B0:             ;                                                 ; has been pressed
+000001B0:             ; 
+000001B0:             ; 
+000001B0:             ; button_has_been_pressed                         ; Branch here when during one of the iteration
+000001B0: E8BD401F    ;         POP     {R0-R4,LR}                      ; a button has been predded
+000001B4: EAFFFFB3    ;         B       return_from_svc
+000001B8:             ; 
+000001B8:             ; 
+000001B8:             ; 
+000001B8:             ; ;------------------------------------------------------------------------------
+000001B8:             ; ; If upper button is pressed, seconds and milliseconds are set to 0 (for synchronization)
+000001B8:             ; 
+000001B8:             ; reset_seconds
+000001B8: E92D4003    ;         PUSH    {LR,R0,R1}
+000001BC: E28F0DF9    ;         ADRL    R0,     PORT_B
+000001C0: E28009FF    ; 
+000001C4: E280053F    ; 
+000001C8: E2800000    ; 
+000001CC: E5501000    ;         LDRB    R1,     [R0]
+000001D0:             ; 
+000001D0: E2011080    ;         AND     R1,     R1,     #L_BTN
+000001D4: E3510080    ;         CMP     R1,     #L_BTN
+000001D8: 1A000004    ;         BNE     seconds_not_reset
+000001DC: E28F1FDA    ;         ADRL    R1,     SECNDS
+000001E0: E2811B01    ; 
+000001E4: E3A00000    ;         MOV     R0,     #0
+000001E8: E5410000    ;         STRB    R0,     [R1]
+000001EC: E5C10001    ;         STRB    R0,     [R1,#1]
+000001F0:             ; 
+000001F0:             ; seconds_not_reset
+000001F0: E8BD4003    ;         POP     {LR,R0,R1}
+000001F4: EAFFFFA3    ;         B       return_from_svc
+000001F8:             ; 
+000001F8:             ; ;------------------------------------------------------------------------------
+000001F8:             ; ; Checks if next row (upper) button on the board has been pressed
+000001F8:             ; ; If the alarm is on or set off, set ALRM to 0
+000001F8:             ; ; else (If it is 0) set ALRM to 1
+000001F8:             ; toggle_alarm
+000001F8: E92D4003    ;         PUSH    {LR,R0,R1}
+000001FC: E28F0CFE    ;         ADRL    R0,     PORT_B
+00000200: E28008FF    ; 
+00000204: E280040F    ; 
+00000208: E2800000    ; 
+0000020C: E5501000    ;         LDRB    R1,     [R0]
+00000210:             ; 
+00000210: E2011040    ;         AND     R1,     R1,     #U_BTN
+00000214: E3510040    ;         CMP     R1,     #U_BTN
+00000218: 1A00000D    ;         BNE     not_toggled
+0000021C:             ; 
+0000021C:             ;         ; Reach this block if the alarm has been toggled (button pressed)
+0000021C: E28F1FCB    ;         ADRL    R1,     ALRM
+00000220: E2811B01    ; 
+00000224: E5D10001    ;         LDRB    R0,     [R1,#1]
+00000228: E3500001    ;         CMP     R0,     #1              ; If it is 1, toggle button is held down
+0000022C: 0A00000C    ;         BEQ     toggle_alarm_fin        ; Dont toggle the alarm
+00000230:             ; 
+00000230:             ; 
+00000230: E5510000    ;         LDRB    R0,     [R1]
+00000234: E3500001    ;         CMP     R0,     #1
+00000238: C3A00001    ;         MOVGT   R0,     #1              ; If alarm is going off, leave it on but disable sound
+0000023C: B3A00001    ;         MOVLT   R0,     #1              ; If it is off, turn it on
+00000240: 03A00000    ;         MOVEQ   R0,     #0              ; If it is turned on, turn it off
+00000244: E5410000    ;         STRB    R0,     [R1]
+00000248:             ; 
+00000248: E3A00001    ;         MOV     R0,     #1
+0000024C: E5C10001    ;         STRB    R0,     [R1,#1]         ; Inform that it has just been toggled (to debounce)
+00000250: EA000003    ;         B       toggle_alarm_fin
+00000254:             ; 
+00000254:             ; not_toggled
+00000254: E28F1FBD    ;         ADRL    R1,     ALRM
+00000258: E2811B01    ; 
+0000025C: E3A00000    ;         MOV     R0,     #0              ; On release of button, second byte is set to 0
+00000260: E5C10001    ;         STRB    R0,     [R1,#1]         ; If second byte is 1, it has just been toggled
+00000264:             ; 
+00000264:             ; toggle_alarm_fin
+00000264: E8BD4003    ;         POP     {LR,R0,R1}
+00000268: EAFFFF86    ;         B       return_from_svc
+0000026C:             ; 
+0000026C:             ; ;------------------------------------------------------------------------------
+0000026C:             ; ; Checks if only 1 of the 4 bits is set high, to avoid having a bias
+0000026C:             ; ; towards some of the buttons when more than 1 is pressed
+0000026C:             ; ; Doing this as opposed to returning the greater of the two bits when shifting
+0000026C:             ; ;
+0000026C:             ; 
+0000026C:             ; check_range                                     ; Making sure that only 1 button has been press
+                      ; ed
+0000026C: E28F0E6D    ;         ADRL    R0,     RANGE                   ; If more than 1 button has been pressed, retur
+00000270: E2800000    ; n
+00000274: E3A01003    ;         MOV     R1,     #3                      ; 0 in R4
+00000278:             ; 
+00000278:             ; check_next_bit
+00000278: E7D03001    ;         LDRB    R3,     [R0,R1]
+0000027C: E1530004    ;         CMP     R3,     R4
+00000280: 01A0F00E    ;         MOVEQ   PC,     LR
+00000284: E2511001    ;         SUBS    R1,     R1,     #1
+00000288: AAFFFFFA    ;         BGE     check_next_bit
+0000028C: E3A04000    ;         MOV     R4,     #0                      ; To indicate value isn't valid
+00000290: E1A0F00E    ;         MOV     PC,     LR
+00000294:             ; 
+00000294:             ; include lcd_funct.s
+00000294:             ; ;##############################################################################
+00000294:             ; ; LCD CODE
+00000294:             ; ;------------------------------------------------------------------------------
+00000294:             ; ; Loop to end the program - SVC 0
+00000294:             ; end
+00000294: EAFFFFFE    ;         B end
+00000298:             ; ;------------------------------------------------------------------------------
+00000298:             ; ; Routine to clear the screen
+00000298: E92D4010    ; clear   PUSH    {LR, R4}
+0000029C: E3A04001    ;         MOV     R4,     #CLEAR
+000002A0: EB00002A    ;         BL      commandSequence
+000002A4: E8BD4010    ;         POP     {LR, R4}
+000002A8: E1A0F00E    ;         MOV     PC,     LR
+000002AC:             ; 
+000002AC:             ; ;------------------------------------------------------------------------------
+000002AC:             ; 
+000002AC:             ; ; Routine to print new line
+000002AC:             ; nextLine
+000002AC: E92D4010    ;         PUSH    {LR, R4}
+000002B0: E3A040A8    ;         MOV     R4,     #NEXT
+000002B4: EB000025    ;         BL      commandSequence
+000002B8: E8BD4010    ;         POP     {LR, R4}
+000002BC: E1A0F00E    ;         MOV     PC,     LR
+000002C0:             ; 
+000002C0:             ; ;------------------------------------------------------------------------------
+000002C0:             ; 
+000002C0:             ; ; Routine to print a string at R6
+000002C0:             ; printString
+000002C0: E92D4010    ;         PUSH    {LR, R4}
+000002C4:             ; nextChar
+000002C4: E4D64001    ;         LDRB    R4,     [R6],   #1
+000002C8: E3540000    ;         CMP     R4,     #0
+000002CC: 0A000001    ;         BEQ     exitPrintString
+000002D0: EB000002    ;         BL      printChar
+000002D4: EAFFFFFA    ;         B       nextChar
+000002D8:             ; 
+000002D8:             ; exitPrintString
+000002D8: E8BD4010    ;         POP     {LR, R4}
+000002DC: E1A0F00E    ;         MOV     PC,     LR
+000002E0:             ; 
+000002E0:             ; ;------------------------------------------------------------------------------
+000002E0:             ; 
+000002E0:             ; ; Routine for printing a character
+000002E0:             ; printChar
+000002E0: E92D0007    ;         PUSH    {R0-R2}
+000002E4:             ; 
+000002E4: E3A00241    ;         MOV     R0,     #PORT_B                 ; set control for input
+000002E8: E3A01004    ;         MOV     R1,     #LCD_RW
+000002EC: E5401000    ;         STRB    R1,     [R0]
+000002F0:             ; 
+000002F0: E3811001    ; wait    ORR     R1,     R1,     #LCD_E          ; set enable
+000002F4: E5401000    ;         STRB    R1,     [R0]
+000002F8:             ; 
+000002F8: E3A00201    ;         MOV     R0,     #PORT_A                 ; read status bit
+000002FC: E5502000    ;         LDRB    R2,     [R0]
+00000300:             ; 
+00000300: E3A00241    ;         MOV     R0,     #PORT_B                 ; set enable bit to low
+00000304: E3A01004    ;         MOV     R1,     #LCD_RW
+00000308: E5401000    ;         STRB    R1,     [R0]
+0000030C:             ; 
+0000030C: E2022080    ;         AND     R2,     R2,     #STATUS
+00000310: E3520080    ;         CMP     R2,     #STATUS
+00000314: 0AFFFFF5    ;         BEQ     wait                            ; if it is busy, back to step 2 to wait
+00000318:             ; 
+00000318: E3A00241    ;         MOV     R0,     #PORT_B                 ; Set to write data
+0000031C: E3A01002    ;         MOV     R1,     #LCD_RS
+00000320: E5401000    ;         STRB    R1,     [R0]
+00000324:             ; 
+00000324: E3A00201    ;         MOV     R0,     #PORT_A                 ; write character in R4
+00000328: E1A01004    ;         MOV     R1,     R4
+0000032C: E5401000    ;         STRB    R1,     [R0]
+00000330:             ; 
+00000330: E3A00241    ;         MOV     R0,     #PORT_B                 ; set enable high
+00000334: E3A01001    ;         MOV     R1,     #LCD_E
+00000338: E3811002    ;         ORR     R1,     R1,     #LCD_RS
+0000033C: E5401000    ;         STRB    R1,     [R0]
+00000340:             ; 
+00000340:             ; 
+00000340: E3A01002    ;                 MOV     R1,     #LCD_RS         ; set enable low
+00000344: E5401000    ;         STRB    R1,     [R0]
+00000348:             ; 
+00000348: E8BD0007    ;         POP     {R0-R2}
+0000034C: E1A0F00E    ;         MOV     PC,     LR
+00000350:             ; 
+00000350:             ; ;------------------------------------------------------------------------------
+00000350:             ; ; Command sequence
+00000350:             ; 
+00000350:             ; commandSequence
+00000350: E92D0007    ;         PUSH    {R0-R2}
+00000354:             ; 
+00000354: E3A00241    ;         MOV     R0,     #PORT_B                 ; set control for input
+00000358: E3A01004    ;         MOV     R1,     #LCD_RW
+0000035C: E5401000    ;         STRB    R1,     [R0]
+00000360:             ; 
+00000360: E3811001    ; wait_c  ORR     R1,     R1,     #LCD_E          ; set enable
+00000364: E5401000    ;         STRB    R1,     [R0]
+00000368:             ; 
+00000368: E3A00201    ;         MOV     R0,     #PORT_A                 ; read status bit
+0000036C: E5502000    ;         LDRB    R2,     [R0]
+00000370:             ; 
+00000370: E3A00241    ;         MOV     R0,     #PORT_B                 ; set enable bit to low
+00000374: E3A01004    ;         MOV     R1,     #LCD_RW
+00000378: E5401000    ;         STRB    R1,     [R0]
+0000037C:             ; 
+0000037C: E2022080    ;         AND     R2,     R2,     #STATUS
+00000380: E3520080    ;         CMP     R2,     #STATUS
+00000384: 0AFFFFF5    ;         BEQ     wait_c                          ; if it is busy, back to step 2 to wait
+00000388:             ; 
+00000388: E3A00241    ;         MOV     R0,     #PORT_B                 ; Set to write data
+0000038C: E3A01000    ;         MOV     R1,     #0
+00000390: E5401000    ;         STRB    R1,     [R0]
+00000394:             ; 
+00000394: E3A00201    ;         MOV     R0,     #PORT_A                 ; Clear data
+00000398: E1A01004    ;         MOV     R1,     R4
+0000039C: E5401000    ;         STRB    R1,     [R0]
+000003A0:             ; 
+000003A0: E3A00241    ;         MOV     R0,     #PORT_B                 ; set enable high
+000003A4: E3A01001    ;         MOV     R1,     #LCD_E
+000003A8: E5401000    ;         STRB    R1,     [R0]
+000003AC:             ; 
+000003AC: E3A01000    ;         MOV     R1,     #0                      ; set enable low
+000003B0: E5401000    ;         STRB    R1,     [R0]
+000003B4:             ; 
+000003B4: E8BD0007    ;         POP     {R0-R2}
+000003B8: E1A0F00E    ;         MOV     PC,     LR
+000003BC:             ; ;##############################################################################
+000003BC:             ; 
+000003BC:             ; include usr_funct.s
+000003BC:             ; ;##############################################################################
+000003BC:             ; ; USER DEFINED FUNCTIONS (Don't directly use peripherals)
+000003BC:             ; 
+000003BC:             ; ;       Increment overall value
+000003BC:             ; ;       Doesn't use peripherals or print digits, so it is safe for the
+000003BC:             ; ;       user. Activity is independent from the timer.
+000003BC:             ; add_one
+000003BC: E92D4000    ;         PUSH    {LR}
+000003C0: E2866001    ;         ADD     R6,     R6,     #1
+000003C4: E3560039    ;         CMP     R6,     #NINE
+000003C8: DA00000C    ;         BLE     printDigits
+000003CC: E3A06030    ;         MOV     R6,     #ZERO
+000003D0: E2877001    ;         ADD     R7,     R7,     #1
+000003D4: E3570039    ;         CMP     R7,     #NINE
+000003D8: DA000008    ;         BLE     printDigits
+000003DC: E3A07030    ;         MOV     R7,     #ZERO
+000003E0: E2888001    ;         ADD     R8,     R8,     #1
+000003E4: E3580039    ;         CMP     R8,     #NINE
+000003E8: DA000004    ;         BLE     printDigits
+000003EC: E3A08030    ;         MOV     R8,     #ZERO
+000003F0: E2899001    ;         ADD     R9,     R9,     #1
+000003F4: E3590039    ;         CMP     R9,     #NINE
+000003F8: DA000000    ;         BLE     printDigits
+000003FC: E3A09030    ;         MOV     R9,     #ZERO
+00000400:             ; printDigits
+00000400: E8BD4000    ;         POP     {LR}
+00000404: E1A0F00E    ;         MOV     PC,     LR
+00000408:             ; 
+00000408:             ; ;##############################################################################
+00000408:             ; 
+00000408:             ; include timer_funct.s
+00000408:             ; ;##############################################################################
+00000408:             ; ; TIMER CODE
+00000408:             ; ;------------------------------------------------------------------------------
+00000408:             ; ;       Used when timer is stopped, all digits set to 0
+00000408:             ; clearDigits
+00000408: E3A06030    ;         MOV     R6,     #ZERO
+0000040C: E3A07030    ;         MOV     R7,     #ZERO
+00000410: E3A08030    ;         MOV     R8,     #ZERO
+00000414: E3A09030    ;         MOV     R9,     #ZERO
+00000418: E1A0F00E    ;         MOV     PC,     LR
+0000041C:             ; 
+0000041C:             ; ;------------------------------------------------------------------------------
+0000041C:             ; ;       Wait for the start button to be pressed
+0000041C:             ; wait_start
+0000041C: E92D4003    ;         PUSH    {LR,R0-R1}
+00000420:             ; not_pushed
+00000420: EB00002B    ;         BL      check_stop                      ; Check if pause is pressed to stop
+00000424: 1A000000    ;         BNE     not_reset                       ; Uses flag from check_stop
+00000428: EF000004    ;         SVC     4                               ; Print digits
+0000042C:             ; not_reset
+0000042C: E28F0EBD    ;         ADRL    R0,     PORT_B
+00000430: E2800AFF    ; 
+00000434: E28006FF    ; 
+00000438: E2800000    ; 
+0000043C: E5501000    ;         LDRB    R1,     [R0]
+00000440:             ; 
+00000440: E2011080    ;         AND     R1,     R1,     #L_BTN
+00000444: E3510080    ;         CMP     R1,     #L_BTN
+00000448: 1AFFFFF4    ;         BNE     not_pushed                      ; Wait while start not pressed
+0000044C: E8BD4003    ;         POP     {LR,R0-R1}
+00000450: EAFFFF0C    ;         B       return_from_svc
+00000454:             ; 
+00000454:             ; ;------------------------------------------------------------------------------
+00000454:             ; ;       Check if pause button is pressed
+00000454:             ; check_pause
+00000454: E92D4003    ;         PUSH    {LR,R0-R1}
+00000458: E28F0FE9    ;         ADRL    R0,     PORT_B
+0000045C: E2800BFE    ; 
+00000460: E28007FF    ; 
+00000464: E2800303    ; 
+00000468: E5501000    ;         LDRB    R1,     [R0]
+0000046C:             ; 
+0000046C: E2011040    ;         AND     R1,     R1,     #U_BTN
+00000470: E3510040    ;         CMP     R1,     #U_BTN                  ; check if the button is pressed
+00000474: 1A000002    ;         BNE     not_pressed                     ; if it isn't, go back
+00000478: EB000015    ;         BL      check_stop                      ; if it is, check for stop
+0000047C: EF000004    ;         SVC     4                               ; print digits (in case of reset)
+00000480: EF000001    ;         SVC     1
+00000484:             ; not_pressed
+00000484: E8BD4003    ;         POP     {LR,R0-R1}
+00000488: E1A0F00E    ;         MOV     PC,     LR
+0000048C:             ; 
+0000048C:             ; ;------------------------------------------------------------------------------
+0000048C:             ; ;       Loop until desired time has passed
+0000048C:             ; timer
+0000048C: E92D400F    ;         PUSH    {LR,R0-R3}
+00000490: E3A01064    ;         MOV     R1,     #SPEED                  ; Adjust for different speeds
+00000494: E28F0FDB    ; count   ADRL    R0,     TIMER
+00000498: E2800BFE    ; 
+0000049C: E28007FF    ; 
+000004A0: E2800303    ; 
+000004A4: E5502000    ;         LDRB    R2,     [R0]                    ; R2 stores old value
+000004A8: E5503000    ; read    LDRB    R3,     [R0]                    ; R3 stores new value
+000004AC: E1520003    ;         CMP     R2,     R3
+000004B0: 0AFFFFFC    ;         BEQ     read
+000004B4: E0432002    ;         SUB     R2,     R3,     R2              ; subtract old from new, to form difference
+000004B8: C202200F    ;         ANDGT   R2,     R2,     #&0F            ; If old value is greater than new value
+000004BC:             ; 
+000004BC: E0411002    ;         SUB     R1,     R1,     R2              ; subtract difference from R1
+000004C0:             ; 
+000004C0: EBFFFFE3    ;         BL      check_pause                     ; Check if pause button is pressed
+000004C4:             ; 
+000004C4: E3510000    ;         CMP     R1,     #0                      ; If R1 hasn't reached 0
+000004C8: 1AFFFFF1    ;         BNE     count
+000004CC: E8BD400F    ;         POP     {LR,R0-R3}
+000004D0: EAFFFEEC    ;         B       return_from_svc
+000004D4:             ; 
+000004D4:             ; ;------------------------------------------------------------------------------
+000004D4:             ; ;       Check if pause button is pressed for stopping
+000004D4:             ; check_stop
+000004D4: E92D400F    ;         PUSH    {LR,R0-R3}
+000004D8: E3A01FFA    ;         MOV     R1,     #1000
+000004DC: E28F0FC9    ; count1  ADRL    R0,     TIMER
+000004E0: E2800BFE    ; 
+000004E4: E28007FF    ; 
+000004E8: E2800303    ; 
+000004EC: E5502000    ;         LDRB    R2,     [R0]                    ;R2 stores old value
+000004F0: E5503000    ; read1   LDRB    R3,     [R0]                    ;R3 stores new value
+000004F4: E1520003    ;         CMP     R2,     R3
+000004F8: 0AFFFFFC    ;         BEQ     read1
+000004FC: E0432002    ;         SUB     R2,     R3,     R2              ; subtract old from new, to form difference
+00000500: C202200F    ;         ANDGT   R2,     R2,     #&0F            ; If old value is greater than new value
+00000504:             ; 
+00000504: E0411002    ;         SUB     R1,     R1,     R2              ; subtract difference from R1
+00000508:             ; 
+00000508:             ; ;       Check if the pause button is still pressed
+00000508:             ; ;       If it is, loop until R1 is 0
+00000508:             ; ;       If it is not, branch back to check_pause
+00000508: E28F0FBD    ;         ADRL    R0,     PORT_B
+0000050C: E2800BFE    ; 
+00000510: E28007FF    ; 
+00000514: E2800303    ; 
+00000518: E5503000    ;         LDRB    R3,     [R0]
+0000051C:             ; 
+0000051C: E2033040    ;         AND     R3,     R3,     #U_BTN
+00000520: E3530040    ;         CMP     R3,     #U_BTN                  ; check if pause button is still pressed
+00000524: 1A000002    ;         BNE     skip
+00000528:             ; 
+00000528: E3510000    ;         CMP     R1,     #0                      ; Check if counter reached 0
+0000052C: 1AFFFFEA    ;         BNE     count1
+00000530: EBFFFFB4    ;         BL      clearDigits
+00000534:             ; 
+00000534:             ; 
+00000534: E8BD400F    ; skip    POP     {LR,R0-R3}
+00000538: E1A0F00E    ;         MOV     PC,     LR
+0000053C:             ; 
+0000053C:             ; ;------------------------------------------------------------------------------
+0000053C:             ; 
+0000053C:             ; ;       For printing the digits when they are zeroed in pause
+0000053C:             ; dedicatedPrint
+0000053C: E92D4000    ;         PUSH    {LR}
+00000540: EBFFFF54    ;         BL      clear
+00000544: E1A04009    ;         MOV     R4,     R9
+00000548: EBFFFF64    ;         BL      printChar
+0000054C: E1A04008    ;         MOV     R4,     R8
+00000550: EBFFFF62    ;         BL      printChar
+00000554: E1A04007    ;         MOV     R4,     R7
+00000558: EBFFFF60    ;         BL      printChar
+0000055C: E1A04006    ;         MOV     R4,     R6
+00000560: EBFFFF5E    ;         BL      printChar
+00000564: E8BD4000    ;         POP     {LR}
+00000568: EAFFFEC6    ;         B       return_from_svc
+0000056C:             ; 
+0000056C:             ; ; END OF TIMER CODE
+0000056C:             ; ;##############################################################################
+0000056C:             ; 
+0000056C:             ; include clock.s
+0000056C:             ; ;##############################################################################
+0000056C:             ; ; FUNCTION TO INCREMENT THE CURRENT TIME
+0000056C:             ; increment_millis
+0000056C: E92D4078    ;         PUSH    {LR,R3-R6}
+00000570:             ; 
+00000570: E28F5E3E    ;         ADRL    R5,     CMD
+00000574: E5555000    ;         LDRB    R5,     [R5]
+00000578: E355002A    ;         CMP     R5,     #STAR           ; Check if control button is pressed (*)
+0000057C: 1A000003    ;         BNE     cont_to_increment       ; If it's not, continue
+00000580: EBFFFF44    ;         BL      clear
+00000584: EB00009D    ;         BL      change_t_or_a           ; else, we go to the change function
+00000588: EB000059    ;         BL      start_print             ; print the change time dialogue
+0000058C:             ; 
+0000058C: EB000075    ;         BL      print_full_alarm
+00000590:             ; 
+00000590:             ; cont_to_increment
+00000590:             ; ;       Actual clock operatios  -----------------------------------------------
+00000590:             ; 
+00000590: E28F5FED    ;         ADRL    R5,     SECNDS
+00000594: E5D53001    ;         LDRB    R3,     [R5,#1]         ; Getting the number of 10s of milliseconds
+00000598: E2833001    ;         ADD     R3,     R3,     #1      ; Incrementing them by 1 at each interrupt
+0000059C: E3530064    ;         CMP     R3,     #100            ; When it is 100 * 10 ms, 1 second has passed
+000005A0: 03A03000    ;         MOVEQ   R3,     #0
+000005A4: E5C53001    ;         STRB    R3,     [R5,#1]         ; Store the change
+000005A8:             ; 
+000005A8: BA000043    ;         BLT     increment_millis_fin
+000005AC:             ; 
+000005AC: E28F4FE9    ;         ADRL    R4,     CMD             ; To get ':' to blink for time
+000005B0: E5D43003    ;         LDRB    R3,     [R4,#3]         ; load last byte
+000005B4: E353003A    ;         CMP     R3,     #COLON
+000005B8: 03A03020    ;         MOVEQ   R3,     #&20            ; Load space character
+000005BC: 13A0303A    ;         MOVNE   R3,     #COLON
+000005C0: E5C43003    ;         STRB    R3,     [R4,#3]
+000005C4:             ; 
+000005C4:             ; 
+000005C4:             ; ;       If milliseconds overflow (passed one second) and the alarm is off (ALRM > 1)###########
+                      ; ######################################################
+000005C4:             ; ;       Decrement ALRM until it is equal to 1, and when it is, turn off buzzer
+000005C4:             ; ;       If the alarm is <= 1, don't do anything
+000005C4: E28F3FE1    ;         ADRL    R3,     ALRM
+000005C8: E5534000    ;         LDRB    R4,     [R3]
+000005CC: E3540001    ;         CMP     R4,     #1
+000005D0: DA00000C    ;         BLE     disable_buzz            ; If the alarm is not going off, subtract the number of
+                      ;  seconds it is on
+000005D4: E2444001    ;         SUB     R4,     R4,     #1
+000005D8: E5434000    ;         STRB    R4,     [R3]
+000005DC:             ; 
+000005DC: E28F3FDD    ;         ADRL    R3,     CMD
+000005E0: E5D34003    ;         LDRB    R4,     [R3,#3]
+000005E4: E354003A    ;         CMP     R4,     #COLON
+000005E8: 03A0408F    ;         MOVEQ   R4,     #&8F
+000005EC: 13A04000    ;         MOVNE   R4,     #0
+000005F0:             ; 
+000005F0: E28F3F82    ;         ADRL    R3,     BUZZER
+000005F4: E2833BFE    ; 
+000005F8: E28337FF    ; 
+000005FC: E2833307    ; 
+00000600: E5434000    ;         STRB    R4,     [R3]
+00000604: EA000005    ;         B       proceed_to_seconds
+00000608:             ; 
+00000608:             ; disable_buzz
+00000608: E28F3E9F    ;         ADRL    R3,     BUZZER
+0000060C: E2833AFF    ; 
+00000610: E28336FF    ; 
+00000614: E2833201    ; 
+00000618: E3A04000    ;         MOV     R4,     #&0
+0000061C: E5434000    ;         STRB    R4,     [R3]
+00000620:             ; proceed_to_seconds
+00000620: E5553000    ;         LDRB    R3,     [R5]            ; Here it is time to increment the seconds
+00000624: E2833001    ;         ADD     R3,     R3,     #1
+00000628: E353003C    ;         CMP     R3,     #60
+0000062C: 03A03000    ;         MOVEQ   R3,     #0              ; If seconds overflow, we will print the new digits
+00000630: E5453000    ;         STRB    R3,     [R5]
+00000634:             ; 
+00000634: BA000020    ;         BLT     increment_millis_fin
+00000638:             ; 
+00000638:             ; ; -----------------------------------------------------------------------------
+00000638:             ; 
+00000638: E28F5FC2    ;         ADRL    R5,     TIME
+0000063C:             ; 
+0000063C:             ; 
+0000063C: E5D54003    ;         LDRB    R4,     [R5, #3]        ; Last digit
+00000640: E2844001    ;         ADD     R4,     R4,     #1
+00000644: E354003A    ;         CMP     R4,     #OVERFLOW       ; Check if minutes overflows (At 10)
+00000648: 03A04030    ;         MOVEQ   R4,     #ZERO           ; If overflows, go back to 0
+0000064C: E5C54003    ;         STRB    R4,     [R5, #3]
+00000650:             ; 
+00000650: 1A000057    ;         BNE     check_alarm             ; If hasn't overflown from comparison
+00000654:             ; 
+00000654: E5D54002    ;         LDRB    R4,     [R5, #2]        ; Second to last digit
+00000658: 02844001    ;         ADDEQ   R4,     R4,     #1      ; Add only if previous overflows (At 6)
+0000065C: E3540036    ;         CMP     R4,     #SIX            ; Check if minutes overflows
+00000660: 03A04030    ;         MOVEQ   R4,     #ZERO           ; If overflows, go back to 0
+00000664: E5C54002    ;         STRB    R4,     [R5, #2]
+00000668:             ; 
+00000668: 1A000051    ;         BNE     check_alarm
+0000066C:             ; 
+0000066C: E5553000    ;         LDRB    R3,     [R5]            ; Get most significant digit
+00000670:             ; 
+00000670:             ; 
+00000670: E3530032    ;         CMP     R3,     #TWO
+00000674: 03A03034    ;         MOVEQ   R3,     #FOUR
+00000678: 13A0303A    ;         MOVNE   R3,     #OVERFLOW
+0000067C:             ; 
+0000067C:             ; 
+0000067C: E5D54001    ;         LDRB    R4,     [R5, #1]        ; Load 2nd digit
+00000680: E2844001    ;         ADD     R4,     R4,     #1      ; Increment it if overflows
+00000684: E1540003    ;         CMP     R4,     R3              ; Check if overflows
+00000688: 0A000001    ;         BEQ     does_overflow           ; If it reaches the overflow value
+0000068C:             ; 
+0000068C: E5C54001    ;         STRB    R4,     [R5, #1]        ; If it doesnt overflow, dont change
+00000690: EA000047    ;         B       check_alarm
+00000694:             ; 
+00000694:             ; does_overflow
+00000694: E353003A    ;         CMP     R3,     #OVERFLOW       ; Check why it overflows
+00000698: 03A04030    ;         MOVEQ   R4,     #ZERO           ; If it has overflown to &3A, it was 9:59, so set digit
+                      ;  2 to 0
+0000069C: 13A04030    ;         MOVNE   R4,     #ZERO           ; Else, it was 12:59 so it overflows to 01:00
+000006A0:             ; 
+000006A0: E5C54001    ;         STRB    R4,     [R5, #1]        ; Save second digit overflown value
+000006A4:             ; 
+000006A4: E5554000    ;         LDRB    R4,     [R5]            ; Get first digit
+000006A8: E2844001    ;         ADD     R4,     R4,     #1      ; Increment it if overflows
+000006AC:             ; 
+000006AC: E3540033    ;         CMP     R4,     #THREE
+000006B0:             ; 
+000006B0: 03A04030    ;         MOVEQ   R4,     #ZERO
+000006B4: E5454000    ;         STRB    R4,     [R5]
+000006B8:             ; 
+000006B8:             ; 
+000006B8:             ; ;       After the time has been changed (once per minute) check if the alarm is on (ALRM = 1)  
+                      ; #################################################################
+000006B8:             ; ;       if it is (ALRM = 1) and the time is equal to the alarm time, then set off alarm (ALRM =
+                      ;  11) and turn on buzzer
+000006B8:             ; ;       else if it is off (ALRM = 0) don't do anything
+000006B8: EA00003D    ;         B       check_alarm
+000006BC:             ; 
+000006BC:             ; increment_millis_fin
+000006BC:             ;         ; Time is modified, so time to check if * or # have been pressed
+000006BC: EBFFFEF5    ;         BL      clear
+000006C0: E28F6FA5    ;         ADRL    R6,     STR_T           ; Printing time as usual (TIME: TI:ME)
+000006C4: EBFFFEFD    ;         BL      printString
+000006C8: EB000009    ;         BL      start_print
+000006CC:             ; 
+000006CC: E28F5FA1    ;         ADRL    R5,     CMD
+000006D0: E5555000    ;         LDRB    R5,     [R5]
+000006D4: E3550023    ;         CMP     R5,     #&23            ; If it is '#', then change the alarm
+000006D8: 1A000002    ;         BNE     dont_change_time
+000006DC: EB000047    ;         BL      change_t_or_a
+000006E0: EB000013    ;         BL      start_print_alarm       ; print the change time dialogue
+000006E4: EA000000    ;         B       increment_millis_pop
+000006E8:             ; 
+000006E8:             ; dont_change_time
+000006E8: EB00001E    ;         BL      print_full_alarm
+000006EC:             ; increment_millis_pop
+000006EC: E8BD4078    ;         POP     {LR,R3-R6}
+000006F0: EAFFFE64    ;         B       return_from_svc
+000006F4:             ; 
+000006F4:             ; ;##############################################################################
+000006F4:             ; ; FUNCTION TO PRINT THE CURRENT TIME
+000006F4:             ; start_print
+000006F4: E92D4038    ;         PUSH    {LR,R3-R5}
+000006F8: E28F5F92    ;         ADRL    R5,     TIME
+000006FC: E3A03000    ;         MOV     R3,     #0              ; Starting to print
+00000700:             ; 
+00000700:             ; get_next_time
+00000700: E7D54003    ;         LDRB    R4,     [R5,R3]
+00000704: EBFFFEF5    ;         BL      printChar
+00000708: E3530001    ;         CMP     R3,     #1
+0000070C: 1A000002    ;         BNE     not_colon_yet
+00000710:             ; 
+00000710: E28F4D09    ;         ADRL    R4,     CMD
+00000714: E5D44003    ;         LDRB    R4,     [R4,#3]         ; Load byte containing colon
+00000718: EBFFFEF0    ;         BL      printChar
+0000071C:             ; 
+0000071C:             ; not_colon_yet
+0000071C: E2833001    ;         ADD     R3,     R3,     #1      ; Substract 1 and cmp to 0
+00000720: E3530003    ;         CMP     R3,     #3
+00000724: DAFFFFF5    ;         BLE     get_next_time
+00000728:             ; 
+00000728: EBFFFEDF    ;         BL      nextLine
+0000072C: E8BD4038    ;         POP     {LR,R3-R5}
+00000730: E1A0F00E    ;         MOV     PC,     LR
+00000734:             ; 
+00000734:             ; ;##############################################################################
+00000734:             ; ; FUNCTION TO PRINT THE ALARM TIME
+00000734:             ; ; Different to printing the current time, colon doesnt blink and the
+00000734:             ; ; string is different
+00000734:             ; start_print_alarm
+00000734: E92D4038    ;         PUSH    {LR,R3-R5}
+00000738:             ; 
+00000738: E28F5F85    ;         ADRL    R5,     ALARM           ; If alarm is on, print alarm, else print alarm (off)
+0000073C: E3A03000    ;         MOV     R3,     #0              ; Starting to print
+00000740:             ; 
+00000740:             ; get_next_alarm
+00000740: E7D54003    ;         LDRB    R4,     [R5,R3]
+00000744: EBFFFEE5    ;         BL      printChar
+00000748: E3530001    ;         CMP     R3,     #1
+0000074C: 03A0403A    ;         MOVEQ   R4,     #COLON          ; Print colon
+00000750: 0BFFFEE2    ;         BLEQ    printChar
+00000754:             ; 
+00000754: E2833001    ;         ADD     R3,     R3,     #1      ; Substract 1 and cmp to 0
+00000758: E3530003    ;         CMP     R3,     #3
+0000075C: DAFFFFF7    ;         BLE     get_next_alarm
+00000760:             ; 
+00000760: E8BD4038    ;         POP     {LR,R3-R5}
+00000764: E1A0F00E    ;         MOV     PC,     LR
+00000768:             ; 
+00000768:             ; ;##############################################################################
+00000768:             ; ; Print full alarm
+00000768:             ; print_full_alarm
+00000768: E92D4060    ;         PUSH    {LR,R5,R6}
+0000076C: E28F5F77    ;         ADRL    R5,     ALRM
+00000770: E5555000    ;         LDRB    R5,     [R5]
+00000774: E3550001    ;         CMP     R5,     #1
+00000778: CA000008    ;         BGT     alarm_goes_off
+0000077C: BA000003    ;         BLT     alarm_is_off
+00000780:             ; 
+00000780:             ; alarm_is_on
+00000780: E28F6E1E    ;         ADRL    R6,     STR_A           ; Print ALARM
+00000784: EBFFFECD    ;         BL      printString
+00000788: EBFFFFE9    ;         BL      start_print_alarm       ; Print the alarm on next row
+0000078C: EA000006    ;         B       print_full_alarm_fin
+00000790:             ; 
+00000790:             ; alarm_is_off
+00000790: E28F6F77    ;         ADRL    R6,     A_OFF           ; Print ALARM
+00000794: EBFFFEC9    ;         BL      printString
+00000798: EBFFFFE5    ;         BL      start_print_alarm       ; Print the alarm on next row
+0000079C: EA000002    ;         B       print_full_alarm_fin
+000007A0:             ; 
+000007A0:             ; alarm_goes_off
+000007A0: E28F6F76    ;         ADRL    R6,     WAKE            ; Print ALARM
+000007A4: EBFFFEC5    ;         BL      printString
+000007A8: EBFFFFE1    ;         BL      start_print_alarm       ; Print the alarm on next row
+000007AC:             ; 
+000007AC:             ; print_full_alarm_fin
+000007AC: E8BD4060    ;         POP     {LR,R5,R6}
+000007B0: E1A0F00E    ;         MOV     PC,     LR
+000007B4:             ; ;##############################################################################
+000007B4:             ; ; TESTING
+000007B4:             ; check_alarm
+000007B4: E92D00F8    ;         PUSH    {R3-R7}
+000007B8: E28F6E19    ;         ADRL    R6,     ALRM
+000007BC: E5566000    ;         LDRB    R6,     [R6]
+000007C0: E3560001    ;         CMP     R6,     #1              ; Check if alarm is on
+000007C4: 1A00000B    ;         BNE     check_alarm_fin         ; If it isn't on, return
+000007C8: E28F6F61    ;         ADRL    R6,     ALARM
+000007CC: E28F7F5D    ;         ADRL    R7,     TIME
+000007D0:             ; 
+000007D0: E3A03003    ;         MOV     R3,     #3
+000007D4:             ; check_next_number
+000007D4:             ; 
+000007D4: E7D64003    ;         LDRB    R4,     [R6,R3]
+000007D8: E7D75003    ;         LDRB    R5,     [R7,R3]
+000007DC: E1540005    ;         CMP     R4,     R5
+000007E0: 1A000004    ;         BNE     check_alarm_fin
+000007E4:             ; 
+000007E4: E2533001    ;         SUBS    R3,     R3,     #1
+000007E8: AAFFFFF9    ;         BGE     check_next_number
+000007EC:             ; 
+000007EC:             ; ;       REACH THIS WHEN ALL THE DIGITS ARE THE SAME - set off alarm
+000007EC: E28F6F57    ;         ADRL    R6,     ALRM            ; Store 21 (num seconds left on alarm is 10)
+000007F0: E3A05015    ;         MOV     R5,     #21
+000007F4: E5465000    ;         STRB    R5,     [R6]
+000007F8:             ; 
+000007F8:             ; check_alarm_fin
+000007F8: E8BD00F8    ;         POP     {R3-R7}
+000007FC: EAFFFFAE    ;         B       increment_millis_fin
+00000800:             ; 
+00000800:             ; 
+00000800:             ; 
+00000800:             ; ;##############################################################################
+00000800:             ; ; FUNCTION TO CHANGE THE TIME OR THE ALARM
+00000800:             ; ; Reach it only if CMD[0] != 0, so no need to check
+00000800:             ; ; R5 - CMD address
+00000800:             ; ; R6 - the address of the alarm or the time
+00000800:             ; 
+00000800:             ; change_t_or_a
+00000800: E92D4078    ;         PUSH    {LR,R3-R6}
+00000804: E28F5F53    ;         ADRL    R5,     CMD             ; Loading command
+00000808: E5553000    ;         LDRB    R3,     [R5]
+0000080C: E353002A    ;         CMP     R3,     #STAR           ; If it is * (2A), then change time
+00000810: 1A000003    ;         BNE     not_time
+00000814:             ; 
+00000814: E28F6E17    ;         ADRL    R6,     SET_T           ; If we're modifying the time
+00000818: EBFFFEA8    ;         BL      printString             ; Pring SET TIME:
+0000081C: E28F6F49    ;         ADRL    R6,     TIME
+00000820:             ; 
+00000820: EA000002    ;         B       check_digits
+00000824:             ; 
+00000824:             ; not_time
+00000824: E28F6F5B    ;         ADRL    R6,     SET_A           ; If we're modifying the alarm
+00000828: EBFFFEA4    ;         BL      printString             ; Print SET ALARM:
+0000082C: E28F6E12    ;         ADRL    R6,     ALARM
+00000830:             ; 
+00000830:             ; check_digits
+00000830: E5D53002    ;         LDRB    R3,     [R5,#2]
+00000834: E28F4000    ;         ADRL    R4,     digit_table
+00000838: E084F103    ;         ADD     PC,     R4,     R3,     LSL #2
+0000083C:             ; 
+0000083C:             ; digit_table
+0000083C: EA000003    ;         B       first_time_setting      ; If CMD[2] == 0, set all to "_" and return
+00000840: EA00000B    ;         B       set_digit_1             ; Else, try to set next digit to current key press
+00000844: EA000015    ;         B       set_digit_2
+00000848: EA000023    ;         B       set_digit_3
+0000084C: EA00002D    ;         B       set_digit_4
+00000850:             ; 
+00000850:             ; 
+00000850:             ; first_time_setting
+00000850: E3A03000    ;         MOV     R3,     #0
+00000854: E3A0405F    ;         MOV     R4,     #&5F            ; Move '_' to all digit places
+00000858:             ; 
+00000858:             ; change_underscore_loop
+00000858: E7C64003    ;         STRB    R4,     [R6,R3]
+0000085C: E2833001    ;         ADD     R3,     R3,     #1
+00000860: E3530003    ;         CMP     R3,     #3
+00000864: DAFFFFFB    ;         BLE     change_underscore_loop
+00000868:             ; 
+00000868: E3A03001    ;         MOV     R3,     #1
+0000086C: E5C53002    ;         STRB    R3,     [R5,#2]         ; Store #1 it CMD[2] - next time change digit 1
+00000870: EA00002D    ;         B       change_t_or_a_fin
+00000874:             ; 
+00000874:             ; set_digit_1
+00000874: E5D53001    ;         LDRB    R3,     [R5, #1]        ; R3 stores last pressed digit on KB
+00000878: E3530030    ;         CMP     R3,     #ZERO           ; If less than 0, print and exit
+0000087C: BA00002A    ;         BLT     change_t_or_a_fin
+00000880: E3530033    ;         CMP     R3,     #THREE          ; If >= 2, print and exit
+00000884: AA000028    ;         BGE     change_t_or_a_fin
+00000888:             ; 
+00000888: E3A04000    ;         MOV     R4,     #0              ; We know it's in range, so change the digit
+0000088C: E5C54001    ;         STRB    R4,     [R5, #1]        ; Clear last pressed digit
+00000890: E5463000    ;         STRB    R3,     [R6]
+00000894:             ; 
+00000894: E3A04002    ;         MOV     R4,     #2              ; Else, change next digit
+00000898: E5C54002    ;         STRB    R4,     [R5,#2]         ; Store #2 it CMD[2] - next time change digit 2
+0000089C:             ; 
+0000089C: EA000022    ;         B       change_t_or_a_fin
+000008A0:             ; 
+000008A0:             ; set_digit_2
+000008A0:             ;         ;First need to check if the first digit is the maximum, if it is, limit is different
+000008A0: E5563000    ;         LDRB    R3,     [R6]
+000008A4: E3530032    ;         CMP     R3,     #TWO            ; R4 will store the LIMIT
+000008A8: 03A04033    ;         MOVEQ   R4,     #THREE          ; Limit is two if first digit is ONE
+000008AC: 13A04039    ;         MOVNE   R4,     #NINE           ; Will never be greater than 9 otherwise, but good to h
+                      ; ave
+000008B0:             ; 
+000008B0: E5D53001    ;         LDRB    R3,     [R5, #1]        ; R3 stores last pressed digit on KB
+000008B4: E3530030    ;         CMP     R3,     #ZERO           ; If less than 0, print and exit
+000008B8: BA00001B    ;         BLT     change_t_or_a_fin
+000008BC: E1530004    ;         CMP     R3,     R4              ; If > LIMIT, print and exit
+000008C0: CA000019    ;         BGT     change_t_or_a_fin
+000008C4:             ; 
+000008C4: E3A04000    ;         MOV     R4,     #0              ; We know it's in range, so change the digit
+000008C8: E5C54001    ;         STRB    R4,     [R5, #1]        ; Clear last pressed digit
+000008CC: E5C63001    ;         STRB    R3,     [R6, #1]
+000008D0:             ; 
+000008D0: E3A04003    ;         MOV     R4,     #3
+000008D4: E5C54002    ;         STRB    R4,     [R5,#2]         ; Store #3 it CMD[2] - next time change digit 3
+000008D8:             ; 
+000008D8: EA000013    ;         B       change_t_or_a_fin
+000008DC:             ; 
+000008DC:             ; set_digit_3
+000008DC: E5D53001    ;         LDRB    R3,     [R5, #1]        ; R3 stores last pressed digit on KB
+000008E0: E3530030    ;         CMP     R3,     #ZERO           ; If less than 0, print and exit
+000008E4: BA000010    ;         BLT     change_t_or_a_fin
+000008E8: E3530036    ;         CMP     R3,     #SIX            ; If >= 6, print and exit
+000008EC: AA00000E    ;         BGE     change_t_or_a_fin
+000008F0:             ; 
+000008F0: E3A04000    ;         MOV     R4,     #0              ; We know it's in range, so change the digit
+000008F4: E5C54001    ;         STRB    R4,     [R5, #1]        ; Clear last pressed digit
+000008F8: E5C63002    ;         STRB    R3,     [R6,#2]
+000008FC:             ; 
+000008FC: E3A04004    ;         MOV     R4,     #4              ; Else, change next digit
+00000900: E5C54002    ;         STRB    R4,     [R5,#2]         ; Store #4 it CMD[2] - next time change digit 4
+00000904:             ; 
+00000904: EA000008    ;         B       change_t_or_a_fin
+00000908:             ; 
+00000908:             ; set_digit_4
+00000908: E5D53001    ;         LDRB    R3,     [R5, #1]        ; R3 stores last pressed digit on KB
+0000090C: E3530030    ;         CMP     R3,     #ZERO           ; If less than 0, print and exit
+00000910: BA000005    ;         BLT     change_t_or_a_fin
+00000914:             ; 
+00000914: E3A04000    ;         MOV     R4,     #0              ; We know it's in range, so change the digit
+00000918: E5C54001    ;         STRB    R4,     [R5, #1]        ; Clear last pressed digit
+0000091C: E5C63003    ;         STRB    R3,     [R6, #3]
+00000920:             ; 
+00000920: E3A04000    ;         MOV     R4,     #0              ; Else, change next digit
+00000924: E5C54002    ;         STRB    R4,     [R5,#2]         ; Store #0 it CMD[2] - we are done changing
+00000928: E5454000    ;         STRB    R4,     [R5]
+0000092C:             ; 
+0000092C:             ; change_t_or_a_fin
+0000092C:             ; 
+0000092C: E8BD4078    ;         POP     {LR,R3-R6}
+00000930: E1A0F00E    ;         MOV     PC,     LR
+00000934:             ; 
+00000934:             ; include parameters.s
+00000934:             ; ;------------------------------------------------------------------------------
+00000934:             ; ; PARAMETERS
+00000934:             ; 
+00000934:             ; LCD_E    EQU &1
+00000934:             ; LCD_RS   EQU &2
+00000934:             ; LCD_RW   EQU &4
+00000934:             ; STATUS   EQU &80
+00000934:             ; 
+00000934:             ; 
+00000934:             ; 
+00000934:             ; L_BTN    EQU &80                                ; Lower Button
+00000934:             ; U_BTN    EQU &40                                ; Upper Button
+00000934:             ; 
+00000934:             ; ZERO     EQU &30                                ; '0' for printing
+00000934:             ; ONE      EQU &31                                ; '1' for printing
+00000934:             ; TWO      EQU &32                                ; '2' for printing
+00000934:             ; THREE    EQU &33                                ; '3' for printing
+00000934:             ; FOUR     EQU &34                                ; '4' for printing
+00000934:             ; FIVE     EQU &35                                ; '5' for printing
+00000934:             ; SIX      EQU &36                                ; '6' for printing
+00000934:             ; SEVEN    EQU &37                                ; '7' for printing
+00000934:             ; EIGHT    EQU &38                                ; '8' for printing
+00000934:             ; NINE     EQU &39                                ; '9' for printing
+00000934:             ; OVERFLOW EQU &3A                                ; Digit overflow
+00000934:             ; COLON    EQU &3A
+00000934:             ; STAR     EQU &2A
+00000934:             ; 
+00000934:             ; NEXT     EQU &A8                                ; Next line command
+00000934:             ; CLEAR    EQU &1                                 ; Clear screen command
+00000934:             ; 
+00000934:             ; PORT_A   EQU &10000000                          ; Used as BASE for offsetting
+00000934:             ; PORT_B   EQU &10000004
+00000934:             ; TIMER    EQU &10000008                          ; Timer location
+00000934:             ; SPEED    EQU 100                                ; Timer speed (milliseconds)
+00000934:             ; NUM_PAD  EQU &20000002                          ; Base address of keyboard
+00000934:             ; BUZZER   EQU &20000000                          ; Address to put the buzzer tone in
+00000934:             ; 
+00000934: 31 34 37 2A ; NUMS    DEFB    &31, &34, &37, &2A              ; Mapping of each button to
+00000938: 32 35 38 30 ;         DEFB    &32, &35, &38, &30              ; its value for printing, with address:
+0000093C: 33 36 39 23 ;         DEFB    &33, &36, &39, &23              ; NUMS + 4 * CurrentRow + BitNumber
+00000940:             ; 
+00000940: 80 40 20 20 ; ROWS    DEFB    &80, &40, &20, &20              ; Bits to set high when chedking rows
+00000944:             ; 
+00000944:             ; 
+00000944: 01 02 04 08 ; RANGE   DEFB    &1, &2, &4, &8                  ; Possible values in data (for single button pr
+                      ; esses)
+00000948:             ; 
+00000948:             ; ;-----------------------------------------------------------------------------
+00000948:             ; ; CLOCK SPECIFIC DEFINITIONS
+00000948: 30 39 34 30 ; TIME    DEFB    &30, &39, &34, &30
+0000094C: 00 00 00 00 ; SECNDS  DEFB    &0, &0, &0, &0                  ; Byte 0 is seconds
+00000950:             ;                                                 ; Byte 1 is tens of milliseconds
+00000950:             ; 
+00000950: 00 00 00 00 ; ALRM    DEFB    &0, &0, &0, &0
+00000954: 31 32 30 30 ; ALARM   DEFB    &31, &32, &30, &30
+00000958: 00 00 00 3A ; CMD     DEFB    &0, &0, &0, &3A                 ; Bytes used for modifying the current time/ALA
+                      ; RM
+0000095C:             ;                                                 ; Byte 0 is the last command
+0000095C:             ;                                                 ;       If * or #, then modify time / alarm
+0000095C:             ;                                                 ;       If 0 - don't modify anything
+0000095C:             ;                                                 ; Byte 1 is the last pressed keypad
+0000095C:             ;                                                 ; Byte 2 is the current modified digit
+0000095C:             ;                                                 ;       If 0, haven't modified anything yet
+0000095C:             ;                                                 ;       else, modify the digit at that position
+0000095C:             ;                                                 ; Byte 3 will store whether to print ':' or not
+0000095C:             ;                                                 ;       If value is 3A, print :,
+0000095C:             ;                                                 ;       else, if it is 20, print space
+0000095C: 54 49 4D 45 ; STR_T   DEFB "TIME       \0"
+00000960: 20 20 20 20 ; 
+00000964: 20 20 20 00 ; 
+00000968: 41 4C 41 52 ; STR_A   DEFB "ALARM(ON)  \0"
+0000096C: 4D 28 4F 4E ; 
+00000970: 29 20 20 00 ; 
+00000974: 41 4C 41 52 ; A_OFF   DEFB "ALARM(OFF) \0"
+00000978: 4D 28 4F 46 ; 
+0000097C: 46 29 20 00 ; 
+00000980: 57 41 4B 45 ; WAKE    DEFB "WAKE UP!!! \0"
+00000984: 20 55 50 21 ; 
+00000988: 21 21 20 00 ; 
+0000098C: 53 45 54 20 ; SET_T   DEFB "SET TIME   \0"
+00000990: 54 49 4D 45 ; 
+00000994: 20 20 20 00 ; 
+00000998: 53 45 54 20 ; SET_A   DEFB "SET ALARM  \0"
+0000099C: 41 4C 41 52 ; 
+000009A0: 4D 20 20 00 ; 
+000009A4:             ; ALIGN
+000009A4:             ; ;------------------------------------------------------------------------------
+000009A4:             ; 
+000009A4:             ;         DEFS 100                                ; SVC stack
+00000A08:             ; s_stack
+00000A08:             ;         DEFS 100                                ; User stack
+00000A6C:             ; _stack
+00000A6C:             ;         DEFS 100                                ; Interrupt stack
+00000AD0:             ; _stack_irq
+00000AD0:             ; 
+00000AD0:             ; 
+
+Symbol Table: Labels
+: initialize                        0000001C  Local -- ARM
+: svc_start                         0000006C  Local -- ARM
+: return_from_svc                   00000088  Local -- ARM
+: interrupt                         00000090  Local -- ARM
+: SVC_Jump_Table                    000000B8  Local -- ARM
+: start                             000000DC  Local -- ARM
+: check_button                      000000E0  Local -- ARM
+: check_next_row                    000000E8  Local -- ARM
+: compare                           00000130  Local -- ARM
+: return_index                      00000144  Local -- ARM
+: try_to_get_digit                  00000188  Local -- ARM
+: nothing_pressed                   000001A0  Local -- ARM
+: button_has_been_pressed           000001B0  Local -- ARM
+: reset_seconds                     000001B8  Local -- ARM
+: seconds_not_reset                 000001F0  Local -- ARM
+: toggle_alarm                      000001F8  Local -- ARM
+: not_toggled                       00000254  Local -- ARM
+: toggle_alarm_fin                  00000264  Local -- ARM
+: check_range                       0000026C  Local -- ARM
+: check_next_bit                    00000278  Local -- ARM
+: end                               00000294  Local -- ARM
+: clear                             00000298  Local -- ARM
+: nextLine                          000002AC  Local -- ARM
+: printString                       000002C0  Local -- ARM
+: nextChar                          000002C4  Local -- ARM
+: exitPrintString                   000002D8  Local -- ARM
+: printChar                         000002E0  Local -- ARM
+: wait                              000002F0  Local -- ARM
+: commandSequence                   00000350  Local -- ARM
+: wait_c                            00000360  Local -- ARM
+: add_one                           000003BC  Local -- ARM
+: printDigits                       00000400  Local -- ARM
+: clearDigits                       00000408  Local -- ARM
+: wait_start                        0000041C  Local -- ARM
+: not_pushed                        00000420  Local -- ARM
+: not_reset                         0000042C  Local -- ARM
+: check_pause                       00000454  Local -- ARM
+: not_pressed                       00000484  Local -- ARM
+: timer                             0000048C  Local -- ARM
+: count                             00000494  Local -- ARM
+: read                              000004A8  Local -- ARM
+: check_stop                        000004D4  Local -- ARM
+: count1                            000004DC  Local -- ARM
+: read1                             000004F0  Local -- ARM
+: skip                              00000534  Local -- ARM
+: dedicatedPrint                    0000053C  Local -- ARM
+: increment_millis                  0000056C  Local -- ARM
+: cont_to_increment                 00000590  Local -- ARM
+: disable_buzz                      00000608  Local -- ARM
+: proceed_to_seconds                00000620  Local -- ARM
+: does_overflow                     00000694  Local -- ARM
+: increment_millis_fin              000006BC  Local -- ARM
+: dont_change_time                  000006E8  Local -- ARM
+: increment_millis_pop              000006EC  Local -- ARM
+: start_print                       000006F4  Local -- ARM
+: get_next_time                     00000700  Local -- ARM
+: not_colon_yet                     0000071C  Local -- ARM
+: start_print_alarm                 00000734  Local -- ARM
+: get_next_alarm                    00000740  Local -- ARM
+: print_full_alarm                  00000768  Local -- ARM
+: alarm_is_on                       00000780  Local -- ARM
+: alarm_is_off                      00000790  Local -- ARM
+: alarm_goes_off                    000007A0  Local -- ARM
+: print_full_alarm_fin              000007AC  Local -- ARM
+: check_alarm                       000007B4  Local -- ARM
+: check_next_number                 000007D4  Local -- ARM
+: check_alarm_fin                   000007F8  Local -- ARM
+: change_t_or_a                     00000800  Local -- ARM
+: not_time                          00000824  Local -- ARM
+: check_digits                      00000830  Local -- ARM
+: digit_table                       0000083C  Local -- ARM
+: first_time_setting                00000850  Local -- ARM
+: change_underscore_loop            00000858  Local -- ARM
+: set_digit_1                       00000874  Local -- ARM
+: set_digit_2                       000008A0  Local -- ARM
+: set_digit_3                       000008DC  Local -- ARM
+: set_digit_4                       00000908  Local -- ARM
+: change_t_or_a_fin                 0000092C  Local -- ARM
+: LCD_E                             00000001  Value
+: LCD_RS                            00000002  Value
+: LCD_RW                            00000004  Value
+: STATUS                            00000080  Value
+: L_BTN                             00000080  Value
+: U_BTN                             00000040  Value
+: ZERO                              00000030  Value
+: ONE                               00000031  Value
+: TWO                               00000032  Value
+: THREE                             00000033  Value
+: FOUR                              00000034  Value
+: FIVE                              00000035  Value
+: SIX                               00000036  Value
+: SEVEN                             00000037  Value
+: EIGHT                             00000038  Value
+: NINE                              00000039  Value
+: OVERFLOW                          0000003A  Value
+: COLON                             0000003A  Value
+: STAR                              0000002A  Value
+: NEXT                              000000A8  Value
+: CLEAR                             00000001  Value
+: PORT_A                            10000000  Value
+: PORT_B                            10000004  Value
+: TIMER                             10000008  Value
+: SPEED                             00000064  Value
+: NUM_PAD                           20000002  Value
+: BUZZER                            20000000  Value
+: NUMS                              00000934  Local -- ARM
+: ROWS                              00000940  Local -- ARM
+: RANGE                             00000944  Local -- ARM
+: TIME                              00000948  Local -- ARM
+: SECNDS                            0000094C  Local -- ARM
+: ALRM                              00000950  Local -- ARM
+: ALARM                             00000954  Local -- ARM
+: CMD                               00000958  Local -- ARM
+: STR_T                             0000095C  Local -- ARM
+: STR_A                             00000968  Local -- ARM
+: A_OFF                             00000974  Local -- ARM
+: WAKE                              00000980  Local -- ARM
+: SET_T                             0000098C  Local -- ARM
+: SET_A                             00000998  Local -- ARM
+: s_stack                           00000A08  Local -- ARM
+: _stack                            00000A6C  Local -- ARM
+: _stack_irq                        00000AD0  Local -- ARM
